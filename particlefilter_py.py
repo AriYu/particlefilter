@@ -4,6 +4,7 @@
 import math
 import matplotlib.pyplot as plt
 import numpy
+from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
 MAX_RANGE = 10 #[m]
@@ -35,10 +36,8 @@ def observe_model(x, y):
     # x : particleの位置・姿勢
     # y : 観測によって得られたRFIDまでの距離
     w = 1.0
-    print(y)
     for i , rfid in enumerate(RFID):
         d = numpy.linalg.norm(rfid - x[:2]) # x[:2] means x[0], x[1]
-        print(i)
         dz = y[i] - d
         w *= gaussian(dz, 0, 1.0)
     return w
@@ -105,27 +104,23 @@ class ParticleFilter:
 
 if __name__ == "__main__":
     particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=100)
-    # process_mean = [0, 0, 0]
-    # process_cov = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     process_mean = numpy.array([0, 0, 0])
     process_cov = numpy.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     particlefilter.set_process_noise_param(mean=process_mean, cov=process_cov)
-    # observe_mean = [0]
-    # observe_cov = [[1]]
     observe_mean = numpy.array([0])
     observe_cov = numpy.array([1])
     particlefilter.set_observe_noise_param(mean=observe_mean, cov=observe_cov)
     particlefilter.print_info()
-    #    particlefilter.run()
-    # truth_state = [0.0] * STATE_DIMENTION
-    # deadr_state = [0.0] * STATE_DIMENTION # Dead reconing state
     truth_state = numpy.zeros((3, 1))
     deadr_state = numpy.zeros((3, 1))
     control = numpy.zeros((1, 2))
     observation = numpy.zeros((len(RFID), 1))
-    dt = 0.1
+    dt = 0.5
     time = 0.0
-    for i in range(100):
+    trajectory = []
+    num_of_loop = 1000
+    pbar = ProgressBar(widgets=[Percentage(), Bar()], max_value=num_of_loop)
+    for i in range(num_of_loop):
         # calculation ground truth
         time = time + dt
         control = control_model(time)
@@ -135,7 +130,14 @@ if __name__ == "__main__":
                                      +numpy.random.multivariate_normal(process_mean,
                                                                        process_cov)),dt)
         particlefilter.predict(dt, process_model, control)
-        for i , rfid in enumerate(RFID):
-            observation[i] = (numpy.linalg.norm(RFID[i] - truth_state[:2])
-                              + numpy.random.normal(observe_mean[0], observe_cov[0]))
+        for ind , rfid in enumerate(RFID):
+            observation[ind] = (numpy.linalg.norm(RFID[ind] - truth_state[:2])
+                                + numpy.random.normal(observe_mean[0], observe_cov[0]))
         particlefilter.sampling(observation, observe_model)
+        trajectory.append(truth_state)
+        pbar.update(i+1)
+    pbar.finish()
+    plt.figure(facecolor="w")
+    plt.scatter([x[0] for x in trajectory], [x[1] for x in trajectory], color='r', marker='x')
+    plt.axis([-30, 30.0, 0.0, 30.0])
+    plt.show()
