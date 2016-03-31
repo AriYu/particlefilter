@@ -3,7 +3,9 @@
 #from numpy.random import *
 import math
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import numpy
+from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
@@ -43,7 +45,7 @@ def observe_model(x, y):
     return w
 
 def gaussian(x, u, sigma):
-    return 1.0/math.sqrt(2.0*math.pi*sigma**2.0)*math.exp(-(x-u)**2.0/(2.0*sigma**2.0))
+    return (1.0/math.sqrt(2.0*math.pi*sigma**2.0))*math.exp((-(x-u)**2.0)/(2.0*sigma**2.0))
 
 
 class Particle:
@@ -63,6 +65,8 @@ class ParticleFilter:
 
     def __init__(self, dimention, num_of_particles):
         self.particles = [Particle(dimention)] * num_of_particles
+        for particle in self.particles:
+            particle.weight = 1.0/num_of_particles
         self.num_of_particles = num_of_particles
         self.dimention = dimention
         self.estimation = None
@@ -92,7 +96,7 @@ class ParticleFilter:
 
     def sampling(self, observation, observe_function):
         for i, particle in enumerate(self.particles):
-            self.particles[i].weight = observe_function(x=particle.state, y=observation)
+            self.particles[i].weight *= observe_function(x=particle.state, y=observation)
         self.normalize()
         self.resampling()
         self.estimate()
@@ -104,39 +108,60 @@ class ParticleFilter:
                 self.particles[i].weight = self.particles[i].weight / sum_weight
         else:
             for i, particle in enumerate(self.particles):
-                self.particles[i].weight = 1.0 / float(self.num_of_particles)
+                self.particles[i].weight = 1.0 / self.num_of_particles
 
-    def resampling(self):
-        pass
+    def resampling(self, ess_th=None):
+        if ess_th is None:
+            ess_th = self.num_of_particles/2.0
+        ess = Decimal(1.0) / sum([Decimal(particle.weight)**Decimal(2.0) for particle in self.particles])
+        if ess > Decimal(ess_th):
+            pass
+        else:
+            weight_array = numpy.array([particle.weight for particle in self.particles])
+            cumsum_weight = numpy.cumsum(weight_array)
+            base = numpy.cumsum(numpy.linspace(0.0,
+                                               1.0-1.0/self.num_of_particles,
+                                               num = self.num_of_particles))
+            for ind in range(self.num_of_particles):
+                index = numpy.argmax(cumsum_weight < base[ind]+numpy.random.rand()/self.num_of_particles)
+                self.particles[ind].state = self.particles[index].state
+                self.particles[ind].weight = 1.0 / self.num_of_particles
 
     def estimate(self):
         self.estimation = numpy.zeros((self.dimention, 1))
         for particle in (self.particles):
-            self.estimation += particle.state * particle.weight
-            
+            self.estimation += (particle.state * particle.weight)
 
+    def get_estimation(self):
+        return self.estimation
 
+    
 if __name__ == "__main__":
-    particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=100)
+    particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=10)
     process_mean = numpy.array([0, 0, 0])
     process_cov = numpy.array([[0.2, 0, 0], [0, 0.2, 0], [0, 0, math.radians(0.1)]])**2
     particlefilter.set_process_noise_param(mean=process_mean, cov=process_cov)
     observe_mean = numpy.array([0])
-    observe_cov = numpy.array([1])
+    observe_cov = numpy.array([0.1])
     particlefilter.set_observe_noise_param(mean=observe_mean, cov=observe_cov)
     particlefilter.print_info()
     # Simulation parameter
-    simulation_cov = numpy.array([[0.2, 0], [0, math.radians(0.1)]])
+    simulation_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])
 
     truth_state = numpy.zeros((3, 1))
     deadr_state = numpy.zeros((3, 1))
     control = numpy.zeros((1, 2))
     observation = numpy.zeros((len(RFID), 1))
-    dt = 0.5
+    dt = 0.1
+    endtime = 60
     time = 0.0
     truth_trajectory = []
     deadr_trajectory = []
-    num_of_loop = 200
+    est_trajectory = []
+    ims = []
+    fig = plt.figure(facecolor="w")
+
+    num_of_loop = int(endtime/dt)
     pbar = ProgressBar(widgets=[Percentage(), Bar()], max_value=num_of_loop)
     for i in range(num_of_loop):
         # calculation ground truth
@@ -152,15 +177,27 @@ if __name__ == "__main__":
             observation[ind] = (numpy.linalg.norm(RFID[ind] - truth_state[:2])
                                 + numpy.random.normal(observe_mean[0], observe_cov[0]))
         particlefilter.sampling(observation, observe_model)
+        est_state = particlefilter.get_estimation()
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
+        est_trajectory.append(est_state)
+        im = plt.scatter(truth_state[0], truth_state[1])
+        im = plt.scatter(est_state[0], est_state[1], c='r')
+        im = plt.scatter(deadr_state[0], deadr_state[1], c='g')
+        # for particle in particlefilter.particles:
+        #     im = plt.scatter(particle.state[0], particle.state[1])
+        ims.append([im])
         pbar.update(i+1)
 
     pbar.finish()
-    plt.figure(facecolor="w")
-    plt.scatter([x[0] for x in truth_trajectory], [x[1] for x in truth_trajectory],
-                color='r', marker='x')
-    plt.scatter([x[0] for x in deadr_trajectory], [x[1] for x in deadr_trajectory],
-                color='b', marker='x')
-    plt.axis([-30, 30.0, 0.0, 30.0])
+    
+    # plt.scatter([x[0] for x in truth_trajectory], [x[1] for x in truth_trajectory],
+    #             color='r', marker='x')
+    # plt.scatter([x[0] for x in deadr_trajectory], [x[1] for x in deadr_trajectory],
+    #             color='b', marker='x')
+    # plt.scatter([x[0] for x in est_trajectory], [x[1] for x in est_trajectory],
+    #             color='g', marker='x')
+    # plt.axis('equal')
+    # plt.axis([-50, 50.0, -50.0, 50.0])
+    #ani = animation.ArtistAnimation(fig, ims, interval=1, repeat_delay=1000)
     plt.show()
