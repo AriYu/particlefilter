@@ -117,6 +117,7 @@ class ParticleFilter:
         if ess > Decimal(ess_th):
             pass
         else:
+            pass
             weight_array = numpy.array([particle.weight for particle in self.particles])
             cumsum_weight = numpy.cumsum(weight_array)
             base = numpy.cumsum(numpy.linspace(0.0,
@@ -135,32 +136,38 @@ class ParticleFilter:
     def get_estimation(self):
         return self.estimation
 
-    
+
 if __name__ == "__main__":
     particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=10)
     process_mean = numpy.array([0, 0, 0])
-    process_cov = numpy.array([[0.2, 0, 0], [0, 0.2, 0], [0, 0, math.radians(0.1)]])**2
+    process_cov = numpy.array([[0.2, 0, 0], [0, 0.2, 0], [0, 0, math.radians(10)]])**2
     particlefilter.set_process_noise_param(mean=process_mean, cov=process_cov)
     observe_mean = numpy.array([0])
-    observe_cov = numpy.array([0.1])
+    observe_cov = numpy.array([1.0])
     particlefilter.set_observe_noise_param(mean=observe_mean, cov=observe_cov)
     particlefilter.print_info()
+
     # Simulation parameter
-    simulation_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])
+    simulation_process_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])
+    simulation_observe_cov = numpy.array([0.1])
 
     truth_state = numpy.zeros((3, 1))
     deadr_state = numpy.zeros((3, 1))
     control = numpy.zeros((1, 2))
+
     observation = numpy.zeros((len(RFID), 1))
+
     dt = 0.1
     endtime = 60
     time = 0.0
+
     truth_trajectory = []
     deadr_trajectory = []
     est_trajectory = []
-    ims = []
-    fig = plt.figure(facecolor="w")
 
+    fig = plt.figure(facecolor="w")
+    
+    frame_list = []
     num_of_loop = int(endtime/dt)
     pbar = ProgressBar(widgets=[Percentage(), Bar()], max_value=num_of_loop)
     for i in range(num_of_loop):
@@ -170,34 +177,28 @@ if __name__ == "__main__":
         truth_state = process_model(x=truth_state, u=control, delta_time=dt)
         deadr_state = process_model(x=deadr_state,
                                     u=(control
-                                       +simulation_cov.dot(numpy.random.randn(2,1))),
+                                       +simulation_process_cov.dot(numpy.random.randn(2,1))),
                                     delta_time=dt)
         particlefilter.predict(dt, process_model, control)
+        # Simulate observation
         for ind , rfid in enumerate(RFID):
             observation[ind] = (numpy.linalg.norm(RFID[ind] - truth_state[:2])
-                                + numpy.random.normal(observe_mean[0], observe_cov[0]))
+                                + simulation_observe_cov.dot(numpy.random.randn(1,1)))
         particlefilter.sampling(observation, observe_model)
         est_state = particlefilter.get_estimation()
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
         est_trajectory.append(est_state)
-        im = plt.scatter(truth_state[0], truth_state[1])
-        im = plt.scatter(est_state[0], est_state[1], c='r')
-        im = plt.scatter(deadr_state[0], deadr_state[1], c='g')
-        # for particle in particlefilter.particles:
-        #     im = plt.scatter(particle.state[0], particle.state[1])
-        ims.append([im])
+        # one_frame = plt.scatter([particle.state[0] for particle in particlefilter.particles],
+        #                         [particle.state[1] for particle in particlefilter.particles])
+    
+        # frame_list.append([one_frame])
+        plt.scatter(truth_state[0], truth_state[1])
+        plt.scatter(est_state[0], est_state[1], c='r')
+        plt.scatter(deadr_state[0], deadr_state[1], c='g')
+        plt.pause(0.01)
         pbar.update(i+1)
 
     pbar.finish()
-    
-    # plt.scatter([x[0] for x in truth_trajectory], [x[1] for x in truth_trajectory],
-    #             color='r', marker='x')
-    # plt.scatter([x[0] for x in deadr_trajectory], [x[1] for x in deadr_trajectory],
-    #             color='b', marker='x')
-    # plt.scatter([x[0] for x in est_trajectory], [x[1] for x in est_trajectory],
-    #             color='g', marker='x')
-    # plt.axis('equal')
-    # plt.axis([-50, 50.0, -50.0, 50.0])
-    #ani = animation.ArtistAnimation(fig, ims, interval=1, repeat_delay=1000)
-    plt.show()
+    # ani = animation.ArtistAnimation(fig, frame_list, interval=20)
+    # fig.show()
