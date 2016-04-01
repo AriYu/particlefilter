@@ -166,7 +166,7 @@ if __name__ == "__main__":
     est_trajectory = []
 
     fig = plt.figure(facecolor="w")
-    
+
     frame_list = []
     num_of_loop = int(endtime/dt)
     pbar = ProgressBar(widgets=[Percentage(), Bar()], max_value=num_of_loop)
