@@ -4,12 +4,13 @@
 import math
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Arrow
 import numpy
 from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
+NUMOFPARTICLE = 10
 MAX_RANGE = 10 #[m]
 
 DELTATIME = 0.1
@@ -94,14 +95,9 @@ class ParticleFilter:
     def predict(self, dt=None, process_function=None, control=None):
         process_noise = numpy.random.normal(size=(self.num_of_particles, self.dimention, 1))
         for i in range(self.num_of_particles):
-            print("state[{}]: {}".format(i, self.particles[i].state))
             self.particles[i].state = process_function(x=self.particles[i].state,
                                                        u=control, delta_time=dt)
-            #self.particles[i].state = process_function(x=self.particles[i].state,
-            #                                            u=control, delta_time=dt)
             self.particles[i].state += (self.process_cov.dot(process_noise[i]))
-            #print("temp: {}".format(temp))
-            print("state[{}]: {}".format(i, self.particles[i].state))
 
     def sampling(self, observation=None, observe_function=None):
         for i, particle in enumerate(self.particles):
@@ -150,7 +146,7 @@ class ParticleFilter:
 
 
 if __name__ == "__main__":
-    particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=3)
+    particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=NUMOFPARTICLE)
     process_mean = numpy.array([0, 0, 0])
     process_cov = numpy.array([[0.2, 0, 0], [0, 0.2, 0], [0, 0, math.radians(10)]])**2
     particlefilter.set_process_noise_param(mean=process_mean, cov=process_cov)
@@ -177,6 +173,8 @@ if __name__ == "__main__":
     est_trajectory = []
 
     fig = plt.figure(facecolor="w")
+    ax_arrow = fig.add_subplot(111, aspect='equal')
+    ax_trajectory = fig.add_subplot(111, aspect='equal')
 
     frame_list = []
     num_of_loop = int(ENDTIME/DELTATIME)
@@ -200,21 +198,27 @@ if __name__ == "__main__":
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
         est_trajectory.append(est_state)
-        # one_frame = plt.scatter([particle.state[0] for particle in particlefilter.particles],
-        #                         [particle.state[1] for particle in particlefilter.particles])
-        ax = fig.add_subplot(111, aspect='equal')
-        ells = [Ellipse(xy=particle.state[:2],
-                        width=particle.weight,
-                        height=particle.weight) for particle in particlefilter.particles]
-        for e in ells:
-            ax.add_artist(e)
-        # frame_list.append([one_frame])
-        plt.scatter(truth_state[0], truth_state[1])
-        plt.scatter(est_state[0], est_state[1], c='r')
-        plt.scatter(deadr_state[0], deadr_state[1], c='g')
+        arws = [Arrow(x=particle.state[0],
+                      y=particle.state[1],
+                      dx=math.cos(particle.state[2]),
+                      dy=math.sin(particle.state[2]))
+                      for particle in particlefilter.particles]
+        ax_arrow.clear()
+        ax_arrow.set_xlim(-10, 15)
+        ax_arrow.set_ylim(-5, 30)
+        for a in arws:
+            ax_arrow.add_artist(a)
+        # ax_trajectory.scatter(truth_state[0], truth_state[1])
+        # ax_trajectory.scatter(est_state[0], est_state[1], c='r')
+        # ax_trajectory.scatter(deadr_state[0], deadr_state[1], c='g')
+        ax_trajectory.scatter([x[0] for x in truth_trajectory],
+                              [x[1] for x in truth_trajectory])
+        # ax_trajectory.scatter(est_state[0], est_state[1], c='r')
+        # ax_trajectory.scatter(deadr_state[0], deadr_state[1], c='g')
+        # plt.scatter(truth_state[0], truth_state[1])
+        # plt.scatter(est_state[0], est_state[1], c='r')
+        # plt.scatter(deadr_state[0], deadr_state[1], c='g')
         plt.pause(0.01)
         pbar.update(i+1)
 
     pbar.finish()
-    # ani = animation.ArtistAnimation(fig, frame_list, interval=20)
-    # fig.show()
