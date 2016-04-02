@@ -10,7 +10,7 @@ from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
-NUMOFPARTICLE = 10
+NUMOFPARTICLE = 100
 MAX_RANGE = 10 #[m]
 
 DELTATIME = 0.1
@@ -120,11 +120,8 @@ class ParticleFilter:
             ess_th = self.num_of_particles/2.0
         ess = Decimal(1.0) / sum([Decimal(particle.weight)**Decimal(2.0) for particle in self.particles])
         if ess > Decimal(ess_th):
-            self.last_particles = self.particles
             pass
         else:
-            self.last_particles = self.particles
-            pass
             weight_array = numpy.array([particle.weight for particle in self.particles])
             cumsum_weight = numpy.cumsum(weight_array)
             base = numpy.cumsum(numpy.linspace(0.0,
@@ -141,8 +138,7 @@ class ParticleFilter:
             self.estimation += (particle.state * particle.weight)
 
     def get_estimation(self):
-        return self.particles[0].state
-    #return self.estimation
+        return self.estimation
 
 
 if __name__ == "__main__":
@@ -193,7 +189,7 @@ if __name__ == "__main__":
         for ind , rfid in enumerate(RFID):
             observation[ind] = (numpy.linalg.norm(RFID[ind] - truth_state[:2])
                                 + simulation_observe_cov.dot(numpy.random.randn(1,1)))
-        #particlefilter.sampling(observation, observe_model)
+        particlefilter.sampling(observation, observe_model)
         est_state = particlefilter.get_estimation()
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
@@ -208,17 +204,14 @@ if __name__ == "__main__":
         ax_arrow.set_ylim(-5, 30)
         for a in arws:
             ax_arrow.add_artist(a)
-        # ax_trajectory.scatter(truth_state[0], truth_state[1])
-        # ax_trajectory.scatter(est_state[0], est_state[1], c='r')
-        # ax_trajectory.scatter(deadr_state[0], deadr_state[1], c='g')
         ax_trajectory.scatter([x[0] for x in truth_trajectory],
                               [x[1] for x in truth_trajectory])
-        # ax_trajectory.scatter(est_state[0], est_state[1], c='r')
-        # ax_trajectory.scatter(deadr_state[0], deadr_state[1], c='g')
-        # plt.scatter(truth_state[0], truth_state[1])
-        # plt.scatter(est_state[0], est_state[1], c='r')
-        # plt.scatter(deadr_state[0], deadr_state[1], c='g')
+        ax_trajectory.scatter([x[0] for x in deadr_trajectory],
+                              [x[1] for x in deadr_trajectory])
+        ax_trajectory.scatter([x[0] for x in est_trajectory],
+                              [x[1] for x in est_trajectory])
         plt.pause(0.01)
         pbar.update(i+1)
 
+    plt.show()
     pbar.finish()
