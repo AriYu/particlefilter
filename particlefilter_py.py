@@ -10,11 +10,11 @@ from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
-NUMOFPARTICLE = 100
+NUMOFPARTICLE = 500
 MAX_RANGE = 10 #[m]
 
 DELTATIME = 0.1
-ENDTIME = 50
+ENDTIME = 70
 
 # RFIFのタグの位置
 RFID=numpy.array([[10.0, 0],
@@ -119,17 +119,19 @@ class ParticleFilter:
         if ess_th is None:
             ess_th = self.num_of_particles/2.0
         ess = Decimal(1.0) / sum([Decimal(particle.weight)**Decimal(2.0) for particle in self.particles])
-        if ess > Decimal(ess_th):
+        if ess < Decimal(ess_th):
             pass
         else:
             weight_array = numpy.array([particle.weight for particle in self.particles])
             cumsum_weight = numpy.cumsum(weight_array)
-            base = numpy.cumsum(numpy.linspace(0.0,
-                                               1.0-1.0/self.num_of_particles,
-                                               num = self.num_of_particles))
+            base = numpy.cumsum(numpy.array([1.0/self.num_of_particles for i in range(self.num_of_particles)])) - 1.0/self.num_of_particles
+            resampleID = base + numpy.random.rand()/self.num_of_particles
+            copy_particles = self.particles
+            index = 1
             for ind in range(self.num_of_particles):
-                index = numpy.argmax(cumsum_weight < base[ind]+numpy.random.rand()/self.num_of_particles)
-                self.particles[ind].state = self.particles[index].state
+                while base[ind] > cumsum_weight[index]:
+                    index += 1
+                self.particles[ind].state = copy_particles[index].state
                 self.particles[ind].weight = 1.0 / self.num_of_particles
 
     def estimate(self):
@@ -152,8 +154,8 @@ if __name__ == "__main__":
     particlefilter.print_info()
 
     # Simulation parameter
-    simulation_process_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])
-    simulation_observe_cov = numpy.array([0.1])
+    simulation_process_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])**2
+    simulation_observe_cov = numpy.array([0.1])**2
 
     truth_state = numpy.zeros((3, 1))
     deadr_state = numpy.zeros((3, 1))
@@ -200,16 +202,16 @@ if __name__ == "__main__":
                       dy=math.sin(particle.state[2]))
                       for particle in particlefilter.particles]
         ax_arrow.clear()
-        ax_arrow.set_xlim(-10, 15)
+        ax_arrow.set_xlim(-20, 20)
         ax_arrow.set_ylim(-5, 30)
         for a in arws:
             ax_arrow.add_artist(a)
         ax_trajectory.scatter([x[0] for x in truth_trajectory],
-                              [x[1] for x in truth_trajectory])
+                              [x[1] for x in truth_trajectory],color='g')
         ax_trajectory.scatter([x[0] for x in deadr_trajectory],
-                              [x[1] for x in deadr_trajectory])
+                              [x[1] for x in deadr_trajectory],color='r')
         ax_trajectory.scatter([x[0] for x in est_trajectory],
-                              [x[1] for x in est_trajectory])
+                              [x[1] for x in est_trajectory],color='b')
         plt.pause(0.01)
         pbar.update(i+1)
 
