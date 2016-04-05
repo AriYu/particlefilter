@@ -5,16 +5,17 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import Arrow
+from matplotlib.patches import Circle
 import numpy
 from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
-NUMOFPARTICLE = 500
+NUMOFPARTICLE = 1000
 MAX_RANGE = 10 #[m]
 
 DELTATIME = 0.1
-ENDTIME = 70
+ENDTIME = 90
 
 # RFIFのタグの位置
 RFID=numpy.array([[10.0, 0],
@@ -143,6 +144,18 @@ class ParticleFilter:
         return self.estimation
 
 
+def plot_particles(ax_circle, particlefilter):
+    circles = [Circle(xy=(particle.state[0], particle.state[1]),
+                      radius=2000.0*particle.weight,
+                      color="k",fill=False )
+                      for particle in particlefilter.particles]
+    ax_circle.clear()
+    ax_circle.set_xlim(-20, 20)
+    ax_circle.set_ylim(-5, 30)
+    for crcl in circles:
+        ax_circle.add_artist(crcl)
+
+        
 if __name__ == "__main__":
     particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=NUMOFPARTICLE)
     process_mean = numpy.array([0, 0, 0])
@@ -154,7 +167,7 @@ if __name__ == "__main__":
     particlefilter.print_info()
 
     # Simulation parameter
-    simulation_process_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])**2
+    simulation_process_cov = numpy.array([[0.5, 0], [0, math.radians(20)]])**2
     simulation_observe_cov = numpy.array([0.1])**2
 
     truth_state = numpy.zeros((3, 1))
@@ -171,7 +184,8 @@ if __name__ == "__main__":
     est_trajectory = []
 
     fig = plt.figure(facecolor="w")
-    ax_arrow = fig.add_subplot(111, aspect='equal')
+    #ax_arrow = fig.add_subplot(111, aspect='equal')
+    ax_circle = fig.add_subplot(111, aspect='equal')
     ax_trajectory = fig.add_subplot(111, aspect='equal')
 
     frame_list = []
@@ -196,16 +210,18 @@ if __name__ == "__main__":
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
         est_trajectory.append(est_state)
-        arws = [Arrow(x=particle.state[0],
-                      y=particle.state[1],
-                      dx=math.cos(particle.state[2]),
-                      dy=math.sin(particle.state[2]))
-                      for particle in particlefilter.particles]
-        ax_arrow.clear()
-        ax_arrow.set_xlim(-20, 20)
-        ax_arrow.set_ylim(-5, 30)
-        for a in arws:
-            ax_arrow.add_artist(a)
+        # arws = [Arrow(x=particle.state[0],
+        #               y=particle.state[1],
+        #               dx=math.cos(particle.state[2]),
+        #               dy=math.sin(particle.state[2]),
+        #               color="y")
+        #               for particle in particlefilter.particles]
+        # ax_arrow.clear()
+        # ax_arrow.set_xlim(-20, 20)
+        # ax_arrow.set_ylim(-5, 30)
+        # for a in arws:
+        #     ax_arrow.add_artist(a)
+        plot_particles(ax_circle, particlefilter)
         ax_trajectory.scatter([x[0] for x in truth_trajectory],
                               [x[1] for x in truth_trajectory],color='g')
         ax_trajectory.scatter([x[0] for x in deadr_trajectory],
