@@ -2,16 +2,18 @@
 # -*- coding: utf-8 -*-
 #from numpy.random import *
 import math
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import Arrow
 from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
 import numpy
 from decimal import *
 from progressbar import ProgressBar, Percentage, Bar
 
 STATE_DIMENTION = 3 # x, y, yaw
-NUMOFPARTICLE = 1000
+NUMOFPARTICLE = 100
 MAX_RANGE = 10 #[m]
 
 DELTATIME = 0.1
@@ -22,6 +24,12 @@ RFID=numpy.array([[10.0, 0],
                   [10.0, 10.0],
                   [0.0, 15.0],
                   [-5.0, 20],])
+
+def calculation_norm(x, y):
+    d = 0.0
+    for i in range(len(x)):
+        d += (x[i] - y[i])**2.0
+    return math.sqrt(d)
 
 def process_model(x=None, u=None, delta_time=None):
     ret = numpy.zeros((STATE_DIMENTION, 1))
@@ -39,15 +47,16 @@ def control_model(time=None):
     u[1] = math.radians(yawrate)*(1-math.exp(-time/T))
     return u
 
-def observe_model(x=None, y=None):
+def observe_model(x=None, y=None, sigma=None):
     # マーカまでの距離を見て遠いのは使わないようにするのがいいかも
     # x : particleの位置・姿勢
     # y : 観測によって得られたRFIDまでの距離
     w = 1.0
     for i , rfid in enumerate(RFID):
-        d = numpy.linalg.norm(rfid - x[:2]) # x[:2] means x[0], x[1]
+        #d = numpy.linalg.norm(rfid - x[:2]) # x[:2] means x[0], x[1]
+        d = calculation_norm(rfid, x[:2])
         dz = y[i] - d
-        w *= gaussian(dz, 0, 1.0)
+        w *= gaussian(dz, 0, sigma[0])
     return w
 
 def gaussian(x=None, u=None, sigma=None):
@@ -102,7 +111,7 @@ class ParticleFilter:
 
     def sampling(self, observation=None, observe_function=None):
         for i, particle in enumerate(self.particles):
-            self.particles[i].weight *= observe_function(x=particle.state, y=observation)
+            self.particles[i].weight *= observe_function(x=particle.state, y=observation, sigma=self.observe_cov)
         self.normalize()
         self.resampling()
         self.estimate()
@@ -146,16 +155,18 @@ class ParticleFilter:
 
 def plot_particles(ax_circle, particlefilter):
     circles = [Circle(xy=(particle.state[0], particle.state[1]),
-                      radius=2000.0*particle.weight,
-                      color="k",fill=False )
+                      radius=1)
                       for particle in particlefilter.particles]
+    patches = PatchCollection(circles, cmap=matplotlib.cm.jet, alpha=0.4)
+    patches.set_array(numpy.array([particle.weight*100.0 for particle in particlefilter.particles]))
     ax_circle.clear()
+    ax_circle.add_collection(patches)
     ax_circle.set_xlim(-20, 20)
     ax_circle.set_ylim(-5, 30)
-    for crcl in circles:
-        ax_circle.add_artist(crcl)
+    # for crcl in circles:
+    #     ax_circle.add_artist(crcl)
 
-        
+
 if __name__ == "__main__":
     particlefilter = ParticleFilter(dimention=STATE_DIMENTION, num_of_particles=NUMOFPARTICLE)
     process_mean = numpy.array([0, 0, 0])
@@ -167,16 +178,13 @@ if __name__ == "__main__":
     particlefilter.print_info()
 
     # Simulation parameter
-    simulation_process_cov = numpy.array([[0.5, 0], [0, math.radians(20)]])**2
+    simulation_process_cov = numpy.array([[0.1, 0], [0, math.radians(20)]])**2
     simulation_observe_cov = numpy.array([0.1])**2
 
     truth_state = numpy.zeros((3, 1))
     deadr_state = numpy.zeros((3, 1))
     control = numpy.zeros((1, 2))
-
     observation = numpy.zeros((len(RFID), 1))
-
-
     time = 0.0
 
     truth_trajectory = []
@@ -188,46 +196,48 @@ if __name__ == "__main__":
     ax_circle = fig.add_subplot(111, aspect='equal')
     ax_trajectory = fig.add_subplot(111, aspect='equal')
 
-    frame_list = []
     num_of_loop = int(ENDTIME/DELTATIME)
     pbar = ProgressBar(widgets=[Percentage(), Bar()], max_value=num_of_loop)
+
+    # Main loop
     for i in range(num_of_loop):
-        # calculation ground truth
+        # Calculation ground truth
         time = time + DELTATIME
         control = control_model(time)
         truth_state = process_model(x=truth_state, u=control, delta_time=DELTATIME)
+
+        # Calculation dead reckoning
         deadr_state = process_model(x=deadr_state,
                                     u=(control
                                        +simulation_process_cov.dot(numpy.random.randn(2,1))),
                                     delta_time=DELTATIME)
+
+        # Particle filter process
         particlefilter.predict(DELTATIME, process_model, control)
+
         # Simulate observation
         for ind , rfid in enumerate(RFID):
-            observation[ind] = (numpy.linalg.norm(RFID[ind] - truth_state[:2])
+            observation[ind] = (calculation_norm(RFID[ind], truth_state[:2])
                                 + simulation_observe_cov.dot(numpy.random.randn(1,1)))
+        
+        # Particle filter process
         particlefilter.sampling(observation, observe_model)
         est_state = particlefilter.get_estimation()
+
+        # Strage state value
         truth_trajectory.append(truth_state)
         deadr_trajectory.append(deadr_state)
         est_trajectory.append(est_state)
-        # arws = [Arrow(x=particle.state[0],
-        #               y=particle.state[1],
-        #               dx=math.cos(particle.state[2]),
-        #               dy=math.sin(particle.state[2]),
-        #               color="y")
-        #               for particle in particlefilter.particles]
-        # ax_arrow.clear()
-        # ax_arrow.set_xlim(-20, 20)
-        # ax_arrow.set_ylim(-5, 30)
-        # for a in arws:
-        #     ax_arrow.add_artist(a)
+
+        # Plot process
         plot_particles(ax_circle, particlefilter)
         ax_trajectory.scatter([x[0] for x in truth_trajectory],
-                              [x[1] for x in truth_trajectory],color='g')
+                              [x[1] for x in truth_trajectory], color='g', label="Ground Truth")
         ax_trajectory.scatter([x[0] for x in deadr_trajectory],
-                              [x[1] for x in deadr_trajectory],color='r')
+                              [x[1] for x in deadr_trajectory], color='r', label="Dead reckoning")
         ax_trajectory.scatter([x[0] for x in est_trajectory],
-                              [x[1] for x in est_trajectory],color='b')
+                              [x[1] for x in est_trajectory], color='b', label="Estimation")
+        plt.legend(shadow=True, loc=2);
         plt.pause(0.01)
         pbar.update(i+1)
 
